@@ -1,33 +1,31 @@
-import AST.RootNode;
-import Assembly.AsmFn;
-import Backend.*;
-import Frontend.ASTBuilder;
-import Frontend.SemanticChecker;
-import Frontend.SymbolCollector;
-import MIR.block;
-import MIR.mainFn;
-import Parser.YxLexer;
-import Parser.YxParser;
-import Util.YxErrorListener;
-import Util.error.error;
-import Util.globalScope;
+import assembly.AsmFn;
+import ast.RootNode;
+import backend.*;
+import frontend.ASTBuilder;
+import frontend.SemanticChecker;
+import frontend.SymbolCollector;
+import mir.MainFunction;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
+import parser.YxLexer;
+import parser.YxParser;
+import util.context.GlobalScope;
+import util.YxErrorListener;
+import util.error.YxError;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
 
-
 public class Main {
-    public static void main(String[] args) throws Exception{
+    public static void main(String[] args) throws Exception {
 
         String name = "test.yx";
         InputStream input = new FileInputStream(name);
 
         try {
             RootNode ASTRoot;
-            globalScope gScope = new globalScope(null);
+            GlobalScope globalScope = new GlobalScope(null);
 
             YxLexer lexer = new YxLexer(CharStreams.fromStream(input));
             lexer.removeErrorListeners();
@@ -36,21 +34,22 @@ public class Main {
             parser.removeErrorListeners();
             parser.addErrorListener(new YxErrorListener());
             ParseTree parseTreeRoot = parser.program();
-            ASTBuilder astBuilder = new ASTBuilder(gScope);
-            ASTRoot = (RootNode)astBuilder.visit(parseTreeRoot);
-            new SymbolCollector(gScope).visit(ASTRoot);
-            new SemanticChecker(gScope).visit(ASTRoot);
 
-            mainFn f = new mainFn();
-            new IRBuilder(f, gScope).visit(ASTRoot);
-            // new IRPrinter(System.out).visitFn(f);
+            ASTBuilder astBuilder = new ASTBuilder(globalScope);
+            ASTRoot = (RootNode) astBuilder.visit(parseTreeRoot);
+            new SymbolCollector(globalScope).visit(ASTRoot);
+            new SemanticChecker(globalScope).visit(ASTRoot);
 
-            AsmFn asmF = new AsmFn();
-            new InstSelector(asmF).visitFn(f);
-            new RegAlloc(asmF).work();
-            new AsmPrinter(asmF, System.out).print();
-        } catch (error er) {
-            System.err.println(er.toString());
+            MainFunction f = new MainFunction();
+            new IRBuilder(f, globalScope).visit(ASTRoot);
+            new IRPrinter(System.out).visitFn(f);
+
+            AsmFn asmFn = new AsmFn();
+            new InstSelector(asmFn).visitFn(f);
+            new RegAlloc(asmFn).work();
+            new AsmPrinter(asmFn, System.out).print();
+        } catch (YxError error) {
+            System.err.println(error.toString());
             throw new RuntimeException();
         }
     }

@@ -161,8 +161,8 @@ public static void main(String[] args) throws Exception{
         parser.removeErrorListeners();
         parser.addErrorListener(new YxErrorListener());
         ParseTree parseTreeRoot = parser.program();
-    } catch (error er) {
-        System.err.println(er.toString());
+    } catch (error err) {
+        System.err.println(err.toString());
         throw new RuntimeException();
     }
 }
@@ -183,14 +183,14 @@ public class YxErrorListener extends BaseErrorListener {
                             String msg,
                             RecognitionException e) {
 
-        throw new syntaxError(msg, new position(line, charPositionInLine));
+        throw new syntaxError(msg, new Position(line, charPositionInLine));
     }
 }
 ```
 
-#### Design The AST
+#### Design The ast
 
-Although the parsed program is tree-like, an AST is still required since each node should have some more value. It is designed as: 
+Although the parsed program is tree-like, an ast is still required since each node should have some more value. It is designed as: 
 
 ```
 - ASTNode
@@ -209,36 +209,37 @@ Although the parsed program is tree-like, an AST is still required since each no
 		- varExprNode
 ```
 
-As an example, the most naïve implementation of ifStmtNode is: 
+As an example, the most naïve implementation of ifStmtNode is:
 
 ```java
-package AST;
+package ast;
 
-import Util.position;
+import util.context.Position;
+import util.position;
 
-public class ifStmtNode extends StmtNode {
-    ExprNode condition;
-    StmtNode thenStmt, elseStmt;
+public class IfStmtNode extends StmtNode {
+   ExprNode condition;
+   StmtNode thenStmt, elseStmt;
 
-    public ifStmtNode(ExprNode condition, StmtNode thenStmt, StmtNode elseStmt, position pos) {
-        super(pos);
-        this.condition = condition;
-        this.thenStmt = thenStmt;
-        this.elseStmt = elseStmt;
-    }
+   public IfStmtNode(ExprNode condition, StmtNode thenStmt, StmtNode elseStmt, Position pos) {
+      super(pos);
+      this.condition = condition;
+      this.thenStmt = thenStmt;
+      this.elseStmt = elseStmt;
+   }
 
-    @Override
-    public void accept(ASTVisitor visitor) {
-        visitor.visit(this);
-    }
+   @Override
+   public void accept(ASTVisitor visitor) {
+      visitor.visit(this);
+   }
 }
 ```
 
-Notice that, the return value type of AST visitor can be any one rather than void. This is based on your own design. 
+Notice that, the return value type of ast visitor can be any one rather than void. This is based on your own design. 
 
-#### AST Builder
+#### ast Builder
 
-Build the AST. The AST Builder is a visitor on the parse tree. 
+Build the ast. The ast Builder is a visitor on the parse tree. 
 
 This step is trivial. Here's an example: 
 
@@ -256,38 +257,39 @@ return new varDefStmtNode(name, expr, new position(ctx));
 
 In global scope, the type system is recorded. But in this language it is not required since we only have `int` and `bool`. 
 
-Every scope records variables defined in it. 
+Every scope records variables defined in it.
 
 ```java
-import Util.error.semanticError;
+import util.error.SemanticError;
+
 import java.util.HashSet;
 
 public class Scope {
 
-    private HashSet<String> members;
-    private Scope parentScope;
+   private HashSet<String> members;
+   private Scope parentScope;
 
 
-    public Scope(Scope parentScope) {
-        members = new HashSet<>();
-        this.parentScope = parentScope;
-    }
+   public Scope(Scope parentScope) {
+      members = new HashSet<>();
+      this.parentScope = parentScope;
+   }
 
-    public Scope parentScope() {
-        return parentScope;
-    }
+   public Scope getParentScope() {
+      return parentScope;
+   }
 
-    public void defineVariable(String name, position pos) {
-        if (members.contains(name))
-            throw new semanticError("member redefine", pos);
-        members.add(name);
-    }
+   public void defineVariable(String name, position pos) {
+      if (members.contains(name))
+         throw new SemanticError("member redefine", pos);
+      members.add(name);
+   }
 
-    public boolean containsVariable(String name, boolean lookUpon) {
-        if (members.contains(name)) return true;
-        else if (parentScope != null && lookUpon) return parentScope.containsMember(name, true);
-        else return false;
-    }
+   public boolean containsVariable(String name, boolean lookUpon) {
+      if (members.contains(name)) return true;
+      else if (parentScope != null && lookUpon) return parentScope.containsMember(name, true);
+      else return false;
+   }
 }
 ```
 
@@ -305,7 +307,7 @@ Now we can do the semantic check. In Yx, We need to consider:
 
 3. undefined/multi-define variable. 
 
-Is there anything more? In Mx there are of course more to consider, and maybe some more AST visitors are required to do preprocess. 
+Is there anything more? In Mx there are of course more to consider, and maybe some more ast visitors are required to do preprocess. 
 
 A fragment of the semantic checker is like: 
 
@@ -314,7 +316,7 @@ A fragment of the semantic checker is like:
 public void visit(varDefStmtNode it) {
     if (it.init != null) {
         it.init.accept(this);
-        if (!it.init.type.isInt)
+        if (!(it.init.type instanceof IntType))
             throw new semanticError("Semantic Error: type not match.",
                                     it.init.pos);
     }
@@ -373,7 +375,7 @@ And the design above is good.
 
 What is the problem? If you check the correctness of `struct a`, you do not know if `b` is a legal type, vise versa. 
 
-To solve the problem, we use another pass named `SymbolCollector`, which briefly collects all type names into a global scope. A global scope is a class derived from `Scope` by adding a map to collect these types. See `Util/globalScope` for more details. 
+To solve the problem, we use another pass named `SymbolCollector`, which briefly collects all type names into a global scope. A global scope is a class derived from `Scope` by adding a map to collect these types. See `util/globalScope` for more details. 
 
 ```java
 @Override public void visit(structDefNode it) {
@@ -423,12 +425,12 @@ at the end of `visit(varExprNode it)`.
 
 welcome to the next stage! 
 
-Now you have a abstract semantic tree passing semantic check. The next thing to do is to turn it into corresponding assembly code. Generally, you may think about how to turn AST into assembly code directly, but in fact, we have an intermediate stage named IR(Intermediate Representation). 
+Now you have a abstract semantic tree passing semantic check. The next thing to do is to turn it into corresponding assembly code. Generally, you may think about how to turn ast into assembly code directly, but in fact, we have an intermediate stage named IR(Intermediate Representation). 
 
-This is because both AST and assembly code is not convenient for us to do optimization. Hence, we design our own IR and the process of compiling is expected to be: 
+This is because both ast and assembly code is not convenient for us to do optimization. Hence, we design our own IR and the process of compiling is expected to be: 
 
 ```
-code ---> AST ---> IR ---> IR ... ---> IR ---> assembly
+code ---> ast ---> IR ---> IR ... ---> IR ---> assembly
         frontend        optimization       backend
 ```
 
@@ -436,7 +438,7 @@ IR is a very personal design, and here we only provide an approach to design one
 
 #### IR Design
 
-Consider why we do not use AST. For the case: 
+Consider why we do not use ast. For the case: 
 
 ```C++
 x = a + b + c + d;
@@ -495,14 +497,14 @@ Now you must have some knowledge of Java(or the language you use), so we skip th
 
 As this is a very trivial one, we let the size of each register be 32bits(that is, a boolean intermediate result still has size of 32 bits)
 
-Now we have prepared everything for `IRBuilder`. Let's do it. Each `exprNode` in AST corresponds to a constant or a register, so we give `exprNode` a new member named `val`. Now we use this member to construct our IR: 
+Now we have prepared everything for `IRBuilder`. Let's do it. Each `exprNode` in ast corresponds to a constant or a register, so we give `exprNode` a new member named `val`. Now we use this member to construct our IR: 
 
 ```java
 @Override
 public void visit(cmpExprNode it) {
 	it.lhs.accept(this);
 	it.rhs.accept(this);
-	register value = new register();
+	register value = new Register();
 	binary.opType op = it.opCode == cmpExprNode.cmpOpType.eq ? eq : ne;
 	currentBlock.push_back(new binary(value, it.lhs.val, it.rhs.val, op));
 	it.val = value;
@@ -550,7 +552,7 @@ It is meaningful to prune some cases in `IRBuilder` to release the pressure of l
 
 ##### Other kinds of IR
 
-The IR above can be identified as a graph IR. There is also tree IR very close to AST structure. You can even have a number of different IR, and lower the program from one IR to another. Each time you turn the program into a lower level of IR, there are some information discarded, just like what happens when you ignore the tree structure of AST and turn it into the graph IR.  As a trade-off, you may get access to some information more easily. 
+The IR above can be identified as a graph IR. There is also tree IR very close to ast structure. You can even have a number of different IR, and lower the program from one IR to another. Each time you turn the program into a lower level of IR, there are some information discarded, just like what happens when you ignore the tree structure of ast and turn it into the graph IR.  As a trade-off, you may get access to some information more easily. 
 
 In all, design your own IR. 
 
